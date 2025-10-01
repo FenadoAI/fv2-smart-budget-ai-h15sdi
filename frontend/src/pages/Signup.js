@@ -19,20 +19,63 @@ const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Client-side validation
+    if (!formData.username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    if (!formData.email.trim()) {
+      setError('Email is required');
+      return;
+    }
+    if (!formData.password) {
+      setError('Password is required');
+      return;
+    }
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
+      console.log('Submitting signup with:', { username: formData.username, email: formData.email });
+      console.log('API URL:', `${API}/auth/signup`);
+
       const response = await axios.post(`${API}/auth/signup`, formData);
+      console.log('Signup response:', response.data);
 
       if (response.data.success) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
         navigate('/dashboard');
       } else {
-        setError(response.data.error || 'Signup failed');
+        const errorMsg = response.data.error || 'Signup failed';
+        console.error('Signup failed:', errorMsg);
+        setError(errorMsg);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred. Please try again.');
+      console.error('Signup error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error message:', err.message);
+
+      // More detailed error handling
+      let errorMsg = 'An error occurred. Please try again.';
+
+      if (err.response) {
+        // Server responded with error status
+        errorMsg = err.response.data?.error || err.response.data?.detail || `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        // Request was made but no response received
+        errorMsg = 'Cannot connect to server. Please check your internet connection.';
+      } else {
+        // Something else happened
+        errorMsg = err.message || 'An unexpected error occurred.';
+      }
+
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

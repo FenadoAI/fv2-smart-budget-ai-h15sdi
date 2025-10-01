@@ -524,6 +524,44 @@ This implementation transforms the AI personal finance assistant into a comprehe
 
 ---
 
+## 2025-10-01: Signup/Signin Flow Fixes
+
+### Requirement ID: fv2-smart-budget-ai-h15sdi (Auth Bug Fix)
+
+### Issues Fixed:
+1. **Enhanced Frontend Error Handling**
+   - Added detailed console logging for debugging
+   - Improved error message specificity (network vs server errors)
+   - Added client-side validation before API calls
+   - Better user feedback for connection issues
+
+2. **Backend Validation Improvements**
+   - Added comprehensive input validation
+   - Separated username and email existence checks for clearer error messages
+   - Added minimum username length validation (3 characters)
+   - Email normalization (trim + lowercase)
+   - Username trimming for consistency
+   - More user-friendly error messages
+
+3. **Validation Rules**
+   - Username: Required, minimum 3 characters, trimmed
+   - Email: Required, valid email format, trimmed and lowercased
+   - Password: Required, minimum 6 characters
+   - Unique username and email checks with specific error messages
+
+### Files Modified:
+- `frontend/src/pages/Signup.js` - Enhanced error handling and validation
+- `frontend/src/pages/Login.js` - Enhanced error handling and validation
+- `backend/server.py` - Improved signup/login validation and error messages
+
+### Status: ✅ FIXED
+- Backend validation now provides clear, specific error messages
+- Frontend displays detailed errors to users
+- Console logging helps debug any remaining issues
+- Signup/signin flow works reliably with proper validation
+
+---
+
 **Total Implementation Time**: ~4 hours
 **Lines of Code Added**: ~3,500+ (Backend: 2,000+, Frontend: 1,000+, Docs: 500+)
 **New Files Created**: 8 (3 backend modules, 3 frontend components, 2 docs)

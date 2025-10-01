@@ -405,15 +405,36 @@ async def signup(user_data: UserSignup, request: Request):
     try:
         db = _ensure_db(request)
 
-        # Check if user exists
-        existing_user = await db.users.find_one({"$or": [{"username": user_data.username}, {"email": user_data.email}]})
-        if existing_user:
-            return AuthResponse(success=False, error="Username or email already exists")
+        # Validate input
+        if not user_data.username or not user_data.username.strip():
+            return AuthResponse(success=False, error="Username is required")
+
+        if not user_data.email or not user_data.email.strip():
+            return AuthResponse(success=False, error="Email is required")
+
+        if not user_data.password:
+            return AuthResponse(success=False, error="Password is required")
+
+        if len(user_data.password) < 6:
+            return AuthResponse(success=False, error="Password must be at least 6 characters")
+
+        if len(user_data.username.strip()) < 3:
+            return AuthResponse(success=False, error="Username must be at least 3 characters")
+
+        # Check if username exists
+        existing_username = await db.users.find_one({"username": user_data.username})
+        if existing_username:
+            return AuthResponse(success=False, error="Username already exists")
+
+        # Check if email exists
+        existing_email = await db.users.find_one({"email": user_data.email})
+        if existing_email:
+            return AuthResponse(success=False, error="Email already exists")
 
         # Create user
         user = User(
-            username=user_data.username,
-            email=user_data.email,
+            username=user_data.username.strip(),
+            email=user_data.email.strip().lower(),
             hashed_password=hash_password(user_data.password)
         )
 
@@ -434,7 +455,7 @@ async def signup(user_data: UserSignup, request: Request):
         )
     except Exception as exc:
         logger.exception("Error in signup")
-        return AuthResponse(success=False, error=str(exc))
+        return AuthResponse(success=False, error="An error occurred during signup. Please try again.")
 
 
 @api_router.post("/auth/login", response_model=AuthResponse)
@@ -442,8 +463,15 @@ async def login(login_data: UserLogin, request: Request):
     try:
         db = _ensure_db(request)
 
+        # Validate input
+        if not login_data.username or not login_data.username.strip():
+            return AuthResponse(success=False, error="Username is required")
+
+        if not login_data.password:
+            return AuthResponse(success=False, error="Password is required")
+
         # Find user
-        user_data = await db.users.find_one({"username": login_data.username})
+        user_data = await db.users.find_one({"username": login_data.username.strip()})
         if not user_data:
             return AuthResponse(success=False, error="Invalid username or password")
 
@@ -468,7 +496,7 @@ async def login(login_data: UserLogin, request: Request):
         )
     except Exception as exc:
         logger.exception("Error in login")
-        return AuthResponse(success=False, error=str(exc))
+        return AuthResponse(success=False, error="An error occurred during login. Please try again.")
 
 
 @api_router.get("/auth/me", response_model=UserResponse)

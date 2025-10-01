@@ -18,20 +18,55 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Client-side validation
+    if (!formData.username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    if (!formData.password) {
+      setError('Password is required');
+      return;
+    }
+
     setLoading(true);
 
     try {
+      console.log('Submitting login with:', { username: formData.username });
+      console.log('API URL:', `${API}/auth/login`);
+
       const response = await axios.post(`${API}/auth/login`, formData);
+      console.log('Login response:', response.data);
 
       if (response.data.success) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
         navigate('/dashboard');
       } else {
-        setError(response.data.error || 'Login failed');
+        const errorMsg = response.data.error || 'Login failed';
+        console.error('Login failed:', errorMsg);
+        setError(errorMsg);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred. Please try again.');
+      console.error('Login error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error message:', err.message);
+
+      // More detailed error handling
+      let errorMsg = 'An error occurred. Please try again.';
+
+      if (err.response) {
+        // Server responded with error status
+        errorMsg = err.response.data?.error || err.response.data?.detail || `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        // Request was made but no response received
+        errorMsg = 'Cannot connect to server. Please check your internet connection.';
+      } else {
+        // Something else happened
+        errorMsg = err.message || 'An unexpected error occurred.';
+      }
+
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

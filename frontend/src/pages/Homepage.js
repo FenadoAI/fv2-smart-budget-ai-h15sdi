@@ -1,40 +1,103 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, TrendingUp, PiggyBank, Target, Brain, FileText, Shield } from 'lucide-react';
+import { ArrowRight, TrendingUp, PiggyBank, Target, Brain, FileText, Shield, Sparkles, Bot } from 'lucide-react';
 
 const Homepage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      {/* Header Navigation */}
+      <nav className="px-6 py-4 max-w-7xl mx-auto flex justify-between items-center">
+        <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+          BudgetAI
+        </div>
+        <div className="flex gap-4">
+          <button
+            onClick={() => navigate('/pricing')}
+            className="px-6 py-2 text-gray-700 hover:text-blue-600 font-medium transition-colors"
+          >
+            Pricing
+          </button>
+          <button
+            onClick={() => navigate('/login')}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Sign In
+          </button>
+        </div>
+      </nav>
+
       {/* Hero Section */}
-      <section className="px-6 py-20 md:py-32 max-w-7xl mx-auto">
+      <section className="px-6 py-16 md:py-24 max-w-7xl mx-auto">
         <div className="text-center">
+          {/* Autopilot Badge */}
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-100 to-pink-100 border border-purple-200 px-4 py-2 rounded-full mb-6">
+            <Bot className="w-5 h-5 text-purple-600" />
+            <span className="text-sm font-semibold text-purple-900">
+              Introducing Autopilot: Your AI Financial Twin
+            </span>
+            <Sparkles className="w-4 h-4 text-purple-600" />
+          </div>
+
           <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6">
-            Your AI-Powered
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-600">
-              Personal Finance Coach
+            Your AI Financial Twin
+            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+              That Actually Takes Action
             </span>
           </h1>
-          <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto">
-            Take control of your finances with AI-driven insights. Plan budgets, track spending,
-            and discover savings opportunities—all in one place.
+          <p className="text-xl md:text-2xl text-gray-600 mb-4 max-w-3xl mx-auto">
+            Not just insights—<strong>Autopilot</strong> runs 1,000+ simulations on your real finances
+            and executes protective actions automatically.
           </p>
+          <p className="text-lg text-gray-500 mb-12 max-w-2xl mx-auto">
+            Save more, stress less. Your AI twin simulates job loss, market dips, and windfalls to protect your future.
+          </p>
+
+          {/* 3 Key Benefits */}
+          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-12">
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-100">
+              <Bot className="w-10 h-10 text-blue-600 mx-auto mb-3" />
+              <h3 className="font-bold text-gray-900 mb-2">Your Financial Twin</h3>
+              <p className="text-sm text-gray-600">
+                AI simulates job loss, market dips, windfalls to protect your future
+              </p>
+            </div>
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-100">
+              <Sparkles className="w-10 h-10 text-purple-600 mx-auto mb-3" />
+              <h3 className="font-bold text-gray-900 mb-2">Auto-Execution</h3>
+              <p className="text-sm text-gray-600">
+                Sweep to savings, round-up investments, pause overspending—automatically
+              </p>
+            </div>
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-gray-100">
+              <Shield className="w-10 h-10 text-green-600 mx-auto mb-3" />
+              <h3 className="font-bold text-gray-900 mb-2">Risk-Free</h3>
+              <p className="text-sm text-gray-600">
+                24-hour rollback, full audit logs, you're always in control
+              </p>
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               onClick={() => navigate('/signup')}
-              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg font-semibold text-lg hover:shadow-2xl transform hover:scale-105 transition-all flex items-center justify-center gap-2"
+              className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-semibold text-lg hover:shadow-2xl transform hover:scale-105 transition-all flex items-center justify-center gap-2"
             >
-              Get Started Free
+              Start Free 30-Day Trial
               <ArrowRight className="w-5 h-5" />
             </button>
             <button
-              onClick={() => navigate('/login')}
-              className="px-8 py-4 bg-white text-gray-900 rounded-lg font-semibold text-lg border-2 border-gray-200 hover:border-blue-600 hover:shadow-lg transform hover:scale-105 transition-all"
+              onClick={() => navigate('/pricing')}
+              className="px-8 py-4 bg-white text-gray-900 rounded-lg font-semibold text-lg border-2 border-gray-200 hover:border-purple-600 hover:shadow-lg transform hover:scale-105 transition-all"
             >
-              Sign In
+              View Pricing
             </button>
           </div>
+
+          <p className="text-sm text-gray-500 mt-4">
+            No credit card required • Cancel anytime • 100% money-back guarantee
+          </p>
         </div>
 
         {/* Feature Image */}

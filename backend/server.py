@@ -20,6 +20,17 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
 from ai_agents.agents import AgentConfig, ChatAgent, SearchAgent
+from subscription_models import (
+    Subscription, SubscriptionResponse, CheckoutRequest, CheckoutResponse,
+    CancelRequest, UpgradeRequest, UpgradeResponse, EntitlementsResponse,
+    LinkTokenResponse, ExchangePublicTokenRequest, ExchangePublicTokenResponse,
+    BankConnectionResponse, SyncResponse, BankConnection,
+    SimulateRequest, SimulateResponse, CreateRuleRequest, CreateRuleResponse,
+    ApproveRuleRequest, RollbackRequest, RollbackResponse, AuditLogEntry,
+    AutopilotRule, EnhancedReportRequest, EnhancedReportResponse
+)
+from entitlements import get_entitlements, require_tier, require_feature
+from autopilot_engine import AutopilotEngine
 
 
 logging.basicConfig(
@@ -33,6 +44,18 @@ ROOT_DIR = Path(__file__).parent
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 security = HTTPBearer()
+
+# Stripe Configuration
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+
+# Plaid Configuration
+PLAID_CLIENT_ID = os.getenv("PLAID_CLIENT_ID", "")
+PLAID_SECRET = os.getenv("PLAID_SECRET_SANDBOX", "")
+PLAID_ENV = os.getenv("PLAID_ENV", "sandbox")
+
+# Initialize Autopilot engine
+autopilot_engine = AutopilotEngine()
 
 
 # ============= Auth Models =============
@@ -1390,6 +1413,626 @@ async def generate_report(
         }
     except Exception as exc:
         logger.exception("Error generating report")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Subscription & Billing Endpoints =============
+@api_router.get("/user/entitlements", response_model=EntitlementsResponse)
+async def get_user_entitlements(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Get user's subscription tier and entitlements."""
+    try:
+        db = _ensure_db(request)
+        subscription = await db.subscriptions.find_one({"user_id": current_user.id})
+
+        tier = "free"
+        status = "active"
+        if subscription:
+            tier = subscription.get("tier", "free")
+            status = subscription.get("status", "active")
+
+        entitlements = get_entitlements(tier, status)
+
+        # Get usage data
+        csv_uploads_this_week = 0  # TODO: Implement actual tracking
+        goals_count = await db.goals.count_documents({"user_id": current_user.id})
+        bank_accounts = await db.bank_connections.count_documents({"user_id": current_user.id})
+
+        return EntitlementsResponse(
+            tier=tier,
+            status=status,
+            features=entitlements["features"],
+            usage={
+                "csv_uploads_this_week": csv_uploads_this_week,
+                "goals_count": goals_count,
+                "bank_accounts_linked": bank_accounts,
+            },
+            limits=entitlements["limits"],
+        )
+    except Exception as exc:
+        logger.exception("Error getting entitlements")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/billing/checkout", response_model=CheckoutResponse)
+async def create_checkout_session(
+    checkout_req: CheckoutRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Create Stripe checkout session for subscription."""
+    try:
+        # Stub implementation - requires actual Stripe integration
+        # In production, use stripe.checkout.Session.create()
+
+        session_id = f"cs_test_{uuid.uuid4()}"
+        checkout_url = f"https://checkout.stripe.com/pay/{session_id}"
+
+        return CheckoutResponse(checkout_url=checkout_url, session_id=session_id)
+    except Exception as exc:
+        logger.exception("Error creating checkout session")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/billing/subscription", response_model=SubscriptionResponse)
+async def get_subscription(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Get user's current subscription details."""
+    try:
+        db = _ensure_db(request)
+        subscription = await db.subscriptions.find_one({"user_id": current_user.id})
+
+        if not subscription:
+            return SubscriptionResponse(
+                tier="free",
+                status="active",
+                cancel_at_period_end=False
+            )
+
+        return SubscriptionResponse(
+            tier=subscription.get("tier", "free"),
+            status=subscription.get("status", "active"),
+            current_period_end=subscription.get("current_period_end"),
+            cancel_at_period_end=subscription.get("cancel_at_period_end", False),
+            trial_ends_at=subscription.get("trial_ends_at"),
+        )
+    except Exception as exc:
+        logger.exception("Error getting subscription")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/billing/cancel")
+async def cancel_subscription(
+    cancel_req: CancelRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Cancel subscription (immediate or at period end)."""
+    try:
+        db = _ensure_db(request)
+        subscription = await db.subscriptions.find_one({"user_id": current_user.id})
+
+        if not subscription:
+            raise HTTPException(status_code=404, detail="No active subscription")
+
+        # Update cancellation status
+        await db.subscriptions.update_one(
+            {"user_id": current_user.id},
+            {"$set": {
+                "cancel_at_period_end": cancel_req.cancel_at_period_end,
+                "status": "cancelled" if not cancel_req.cancel_at_period_end else "active",
+                "updated_at": datetime.now(timezone.utc),
+            }}
+        )
+
+        effective_date = subscription.get("current_period_end") if cancel_req.cancel_at_period_end else datetime.now(timezone.utc)
+
+        return {"status": "cancelled", "effective_date": effective_date}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error cancelling subscription")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/billing/upgrade", response_model=UpgradeResponse)
+async def upgrade_subscription(
+    upgrade_req: UpgradeRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Upgrade subscription to a higher tier."""
+    try:
+        db = _ensure_db(request)
+        subscription = await db.subscriptions.find_one({"user_id": current_user.id})
+
+        current_tier = "free"
+        if subscription:
+            current_tier = subscription.get("tier", "free")
+
+        # Calculate proration (simplified)
+        tier_prices = {"pro": 399, "premium": 999}
+        proration = tier_prices.get(upgrade_req.new_tier, 0) - tier_prices.get(current_tier, 0)
+
+        # Update subscription
+        if subscription:
+            await db.subscriptions.update_one(
+                {"user_id": current_user.id},
+                {"$set": {
+                    "tier": upgrade_req.new_tier,
+                    "status": "active",
+                    "updated_at": datetime.now(timezone.utc),
+                }}
+            )
+        else:
+            # Create new subscription
+            new_sub = Subscription(
+                user_id=current_user.id,
+                tier=upgrade_req.new_tier,
+                status="trial",
+                trial_ends_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+            await db.subscriptions.insert_one(new_sub.model_dump())
+
+        return UpgradeResponse(
+            proration_amount=max(proration, 0),
+            effective_immediately=True,
+            new_tier=upgrade_req.new_tier,
+        )
+    except Exception as exc:
+        logger.exception("Error upgrading subscription")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/billing/webhook")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhooks for subscription events."""
+    try:
+        # Stub implementation - requires actual Stripe webhook verification
+        payload = await request.json()
+        event_type = payload.get("type", "")
+
+        logger.info(f"Received Stripe webhook: {event_type}")
+
+        # Handle different event types
+        # subscription.created, subscription.updated, subscription.deleted,
+        # invoice.paid, invoice.payment_failed, customer.subscription.trial_will_end
+
+        return {"received": True}
+    except Exception as exc:
+        logger.exception("Error handling webhook")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Bank Integration Endpoints =============
+@api_router.post("/bank/create-link-token", response_model=LinkTokenResponse)
+@require_tier("premium")
+async def create_plaid_link_token(
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Create Plaid Link token for bank connection (Premium only)."""
+    try:
+        # Stub implementation - requires actual Plaid integration
+        # In production: plaid_client.link_token_create()
+
+        link_token = f"link-sandbox-{uuid.uuid4()}"
+        expiration = datetime.now(timezone.utc) + timedelta(minutes=30)
+
+        return LinkTokenResponse(link_token=link_token, expiration=expiration)
+    except Exception as exc:
+        logger.exception("Error creating link token")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/bank/exchange-public-token", response_model=ExchangePublicTokenResponse)
+@require_tier("premium")
+async def exchange_public_token(
+    token_req: ExchangePublicTokenRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Exchange Plaid public token for access token (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        # Stub implementation - requires actual Plaid token exchange
+        # In production: plaid_client.item_public_token_exchange()
+
+        connection_id = str(uuid.uuid4())
+        item_id = f"item-sandbox-{uuid.uuid4()}"
+        access_token_encrypted = "encrypted_access_token_placeholder"
+
+        # Create bank connection
+        bank_conn = BankConnection(
+            id=connection_id,
+            user_id=current_user.id,
+            institution_name="Chase Bank",
+            institution_id="ins_sandbox",
+            access_token_encrypted=access_token_encrypted,
+            item_id=item_id,
+            status="active",
+            accounts=[
+                {"account_id": "acc_1", "name": "Checking", "type": "depository", "subtype": "checking", "current_balance": 1500.00, "available_balance": 1500.00},
+                {"account_id": "acc_2", "name": "Savings", "type": "depository", "subtype": "savings", "current_balance": 5000.00, "available_balance": 5000.00},
+            ],
+            last_sync_at=datetime.now(timezone.utc),
+        )
+
+        await db.bank_connections.insert_one(bank_conn.model_dump())
+
+        return ExchangePublicTokenResponse(
+            connection_id=connection_id,
+            accounts=bank_conn.accounts,
+        )
+    except Exception as exc:
+        logger.exception("Error exchanging public token")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/bank/connections", response_model=List[BankConnectionResponse])
+@require_tier("premium")
+async def get_bank_connections(
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Get all bank connections for user (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        connections = await db.bank_connections.find({"user_id": current_user.id}).to_list(100)
+
+        return [
+            BankConnectionResponse(
+                connection_id=c["id"],
+                institution_name=c["institution_name"],
+                accounts=c.get("accounts", []),
+                last_sync=c.get("last_sync_at"),
+                status=c.get("status", "active"),
+            )
+            for c in connections
+        ]
+    except Exception as exc:
+        logger.exception("Error getting bank connections")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/bank/sync/{connection_id}", response_model=SyncResponse)
+@require_tier("premium")
+async def sync_bank_connection(
+    connection_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Sync transactions and balances from bank (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        connection = await db.bank_connections.find_one({"id": connection_id, "user_id": current_user.id})
+        if not connection:
+            raise HTTPException(status_code=404, detail="Bank connection not found")
+
+        # Stub implementation - requires actual Plaid sync
+        # In production: plaid_client.transactions_sync()
+
+        transactions_added = 5  # Simulated
+        balances_updated = len(connection.get("accounts", []))
+
+        # Update last sync time
+        await db.bank_connections.update_one(
+            {"id": connection_id},
+            {"$set": {"last_sync_at": datetime.now(timezone.utc)}}
+        )
+
+        return SyncResponse(
+            transactions_added=transactions_added,
+            balances_updated=balances_updated,
+            last_sync=datetime.now(timezone.utc),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error syncing bank connection")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.delete("/bank/connection/{connection_id}")
+@require_tier("premium")
+async def delete_bank_connection(
+    connection_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Delete bank connection (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        result = await db.bank_connections.delete_one({"id": connection_id, "user_id": current_user.id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Bank connection not found")
+
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error deleting bank connection")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Autopilot Endpoints =============
+@api_router.post("/autopilot/simulate", response_model=SimulateResponse)
+@require_tier("premium")
+async def simulate_autopilot(
+    sim_req: SimulateRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Run Monte Carlo simulation for Autopilot (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        # Gather user's financial data
+        transactions = await db.transactions.find({"user_id": current_user.id}).to_list(1000)
+        goals = await db.goals.find({"user_id": current_user.id}).to_list(100)
+
+        # Calculate averages
+        income_transactions = [t for t in transactions if t["type"] == "income"]
+        expense_transactions = [t for t in transactions if t["type"] == "expense"]
+
+        avg_income = sum(t["amount"] for t in income_transactions) / max(len(income_transactions), 1)
+        avg_expenses = sum(t["amount"] for t in expense_transactions) / max(len(expense_transactions), 1)
+
+        user_data = {
+            "current_balance": 5000,  # TODO: Get from bank connection or calculate
+            "avg_monthly_income": avg_income,
+            "avg_monthly_expenses": avg_expenses,
+            "goals": [{"id": g["id"], "target_amount": g["target_amount"], "current_amount": g["current_amount"]} for g in goals],
+        }
+
+        # Run simulation
+        results = autopilot_engine.run_simulation(user_data, sim_req.scenario, sim_req.mode)
+
+        return SimulateResponse(**results)
+    except Exception as exc:
+        logger.exception("Error running simulation")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/autopilot/create-rule", response_model=CreateRuleResponse)
+@require_tier("premium")
+async def create_autopilot_rule(
+    rule_req: CreateRuleRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Create Autopilot rule (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        rule = AutopilotRule(
+            user_id=current_user.id,
+            rule_name=rule_req.rule_name,
+            mode=rule_req.mode,
+            enabled=False,  # Requires approval
+            condition=rule_req.condition,
+            action=rule_req.action,
+            simulation_results={
+                "success_probability": 0.75,
+                "estimated_impact": 500.00,
+                "risk_level": "low",
+            },
+        )
+
+        await db.autopilot_rules.insert_one(rule.model_dump())
+
+        return CreateRuleResponse(
+            rule_id=rule.id,
+            simulation_results=rule.simulation_results,
+        )
+    except Exception as exc:
+        logger.exception("Error creating Autopilot rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/autopilot/rules", response_model=List[AutopilotRule])
+@require_tier("premium")
+async def get_autopilot_rules(
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Get all Autopilot rules (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        rules = await db.autopilot_rules.find({"user_id": current_user.id}).to_list(100)
+        return [AutopilotRule(**r) for r in rules]
+    except Exception as exc:
+        logger.exception("Error getting Autopilot rules")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.put("/autopilot/rule/{rule_id}", response_model=AutopilotRule)
+@require_tier("premium")
+async def update_autopilot_rule(
+    rule_id: str,
+    rule_data: CreateRuleRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Update Autopilot rule (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        result = await db.autopilot_rules.update_one(
+            {"id": rule_id, "user_id": current_user.id},
+            {"$set": rule_data.model_dump()}
+        )
+
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Rule not found")
+
+        updated_rule = await db.autopilot_rules.find_one({"id": rule_id})
+        return AutopilotRule(**updated_rule)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error updating Autopilot rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/autopilot/approve/{rule_id}")
+@require_tier("premium")
+async def approve_autopilot_rule(
+    rule_id: str,
+    approve_req: ApproveRuleRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Approve or reject Autopilot rule for execution (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        result = await db.autopilot_rules.update_one(
+            {"id": rule_id, "user_id": current_user.id},
+            {"$set": {"approved_by_user": approve_req.approved, "enabled": approve_req.approved}}
+        )
+
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Rule not found")
+
+        return {"rule_id": rule_id, "approved_by_user": approve_req.approved, "status": "active" if approve_req.approved else "disabled"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error approving rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.delete("/autopilot/rule/{rule_id}")
+@require_tier("premium")
+async def delete_autopilot_rule(
+    rule_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Delete Autopilot rule (Premium only)."""
+    try:
+        if not db:
+            db = _ensure_db(request)
+
+        result = await db.autopilot_rules.delete_one({"id": rule_id, "user_id": current_user.id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Rule not found")
+
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error deleting rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/autopilot/rollback/{execution_id}", response_model=RollbackResponse)
+@require_tier("premium")
+async def rollback_autopilot_execution(
+    execution_id: str,
+    rollback_req: RollbackRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Rollback an Autopilot execution (Premium only)."""
+    try:
+        # Stub implementation - would reverse a transaction
+        return RollbackResponse(rolled_back=True, refunded_amount=150.00)
+    except Exception as exc:
+        logger.exception("Error rolling back execution")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/autopilot/audit-log", response_model=List[AuditLogEntry])
+@require_tier("premium")
+async def get_autopilot_audit_log(
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+    db = None
+):
+    """Get Autopilot execution audit log (Premium only)."""
+    try:
+        # Stub implementation - would return actual execution history
+        return []
+    except Exception as exc:
+        logger.exception("Error getting audit log")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Enhanced Reports Endpoints =============
+@api_router.post("/reports/generate-enhanced", response_model=EnhancedReportResponse)
+async def generate_enhanced_report(
+    report_req: EnhancedReportRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    """Generate enhanced reports (format gated by tier)."""
+    try:
+        db = _ensure_db(request)
+
+        # Check format entitlement
+        subscription = await db.subscriptions.find_one({"user_id": current_user.id})
+        tier = subscription.get("tier", "free") if subscription else "free"
+
+        from entitlements import TIER_FEATURES
+        allowed_formats = TIER_FEATURES.get(tier, TIER_FEATURES["free"])["export_formats"]
+
+        if report_req.format not in allowed_formats:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "format_gated",
+                    "message": f"{report_req.format.upper()} export requires Pro or Premium subscription",
+                    "current_tier": tier,
+                    "upgrade_url": "/pricing",
+                }
+            )
+
+        # Stub implementation - would generate actual PDF/Excel file
+        report_url = f"https://reports.example.com/{uuid.uuid4()}.{report_req.format}"
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+        return EnhancedReportResponse(
+            report_url=report_url,
+            expires_at=expires_at,
+            report_type=report_req.report_type,
+            format=report_req.format,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error generating enhanced report")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

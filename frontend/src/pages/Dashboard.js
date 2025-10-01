@@ -376,90 +376,93 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome back, {user?.username}!
-            </h1>
-            <p className="text-gray-600">Your Financial Dashboard</p>
-          </div>
-          <div className="flex items-center gap-4">
-            {/* Streak Counter */}
-            {userStats && userStats.current_streak > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-lg">
-                <Flame className="w-5 h-5 text-orange-600" />
-                <span className="font-bold text-orange-700">{userStats.current_streak} day streak!</span>
-              </div>
-            )}
-            {/* Alerts Badge */}
-            {alerts.length > 0 && (
-              <div className="relative">
-                <Bell className="w-6 h-6 text-gray-600" />
-                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {alerts.length}
-                </span>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              Logout
-            </button>
+      {/* Header - Mobile Optimized */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">
+                Welcome, {user?.username}!
+              </h1>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Your Financial Dashboard</p>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              {/* Streak Counter - Compact on Mobile */}
+              {userStats && userStats.current_streak > 0 && (
+                <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                  <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+                  <span className="font-bold text-orange-700 text-xs sm:text-base">{userStats.current_streak}🔥</span>
+                </div>
+              )}
+              {/* Alerts Badge */}
+              {alerts.length > 0 && (
+                <div className="relative">
+                  <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs">
+                    {alerts.length}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-8 pb-24 sm:pb-8">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-red-800">{error}</p>
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 sm:gap-3">
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-red-800 text-sm sm:text-base">{error}</p>
           </div>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm p-6 border-2 border-green-100">
+        {/* Summary Cards - Mobile Optimized */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6 mb-4 sm:mb-8">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border-2 border-green-100">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 font-medium">Total Income</span>
-              <TrendingUp className="w-5 h-5 text-green-600" />
+              <span className="text-gray-600 font-medium text-sm sm:text-base">Total Income</span>
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
             </div>
-            <p className="text-3xl font-bold text-green-600">${totalIncome.toFixed(2)}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">${totalIncome.toFixed(2)}</p>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm p-6 border-2 border-red-100">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border-2 border-red-100">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 font-medium">Total Expenses</span>
-              <TrendingDown className="w-5 h-5 text-red-600" />
+              <span className="text-gray-600 font-medium text-sm sm:text-base">Total Expenses</span>
+              <TrendingDown className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
             </div>
-            <p className="text-3xl font-bold text-red-600">${totalExpenses.toFixed(2)}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-red-600">${totalExpenses.toFixed(2)}</p>
           </div>
 
-          <div className={`bg-white rounded-xl shadow-sm p-6 border-2 ${netBalance >= 0 ? 'border-blue-100' : 'border-orange-100'}`}>
+          <div className={`bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6 border-2 ${netBalance >= 0 ? 'border-blue-100' : 'border-orange-100'}`}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 font-medium">Net Balance</span>
-              <DollarSign className={`w-5 h-5 ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+              <span className="text-gray-600 font-medium text-sm sm:text-base">Net Balance</span>
+              <DollarSign className={`w-4 h-4 sm:w-5 sm:h-5 ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
             </div>
-            <p className={`text-3xl font-bold ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+            <p className={`text-2xl sm:text-3xl font-bold ${netBalance >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
               ${Math.abs(netBalance).toFixed(2)}
             </p>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid lg:grid-cols-2 gap-8">
+        {/* Main Content Grid - Mobile Optimized */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
           {/* Transactions Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Transactions</h2>
-              <div className="flex gap-2">
-                <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors">
-                  <Upload className="w-5 h-5" />
-                  <span className="font-medium">Upload CSV</span>
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Transactions</h2>
+              <div className="flex gap-1 sm:gap-2">
+                <label className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors">
+                  <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="font-medium text-xs sm:text-base hidden sm:inline">Upload CSV</span>
+                  <span className="font-medium text-xs sm:hidden">CSV</span>
                   <input
                     type="file"
                     accept=".csv"
@@ -469,10 +472,10 @@ const Dashboard = () => {
                 </label>
                 <button
                   onClick={() => setShowAddTransaction(!showAddTransaction)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  <PlusCircle className="w-5 h-5" />
-                  Add
+                  <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-xs sm:text-base">Add</span>
                 </button>
               </div>
             </div>
@@ -589,23 +592,25 @@ const Dashboard = () => {
           </div>
 
           {/* Budget Section */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">AI Budget Analysis</h2>
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">AI Budget</h2>
               <button
                 onClick={handleGenerateBudget}
                 disabled={generatingBudget || transactions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-base"
               >
                 {generatingBudget ? (
                   <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    Analyzing...
+                    <Loader className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                    <span className="hidden sm:inline">Analyzing...</span>
+                    <span className="sm:hidden">...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    Generate Budget
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline">Generate Budget</span>
+                    <span className="sm:hidden">Generate</span>
                   </>
                 )}
               </button>
@@ -678,20 +683,20 @@ const Dashboard = () => {
         </div>
 
         {/* Goals & Gamification Section */}
-        <div className="grid lg:grid-cols-2 gap-8 mt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mt-4 sm:mt-8">
           {/* Goals */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Target className="w-6 h-6 text-blue-600" />
-                Goals
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Target className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                <span className="hidden sm:inline">Goals</span>
               </h2>
               <button
                 onClick={() => setShowAddGoal(!showAddGoal)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-base"
               >
-                <PlusCircle className="w-5 h-5" />
-                Add Goal
+                <PlusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span>Add Goal</span>
               </button>
             </div>
 
@@ -795,26 +800,26 @@ const Dashboard = () => {
           </div>
 
           {/* Gamification - Badges */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Award className="w-6 h-6 text-yellow-600" />
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+              <Award className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
               Achievements
             </h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
               {badges.map((badge) => {
                 const isUnlocked = achievements.some(a => a.badge_id === badge.id);
                 return (
                   <div
                     key={badge.id}
-                    className={`p-4 rounded-lg text-center transition-all ${
+                    className={`p-2 sm:p-4 rounded-lg text-center transition-all ${
                       isUnlocked
                         ? 'bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-300'
                         : 'bg-gray-100 opacity-50'
                     }`}
                   >
-                    <div className="text-4xl mb-2">{badge.icon}</div>
-                    <p className="font-bold text-xs text-gray-900">{badge.name}</p>
-                    <p className="text-xs text-gray-600 mt-1">{badge.description}</p>
+                    <div className="text-2xl sm:text-4xl mb-1 sm:mb-2">{badge.icon}</div>
+                    <p className="font-bold text-[10px] sm:text-xs text-gray-900">{badge.name}</p>
+                    <p className="text-[9px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 hidden sm:block">{badge.description}</p>
                   </div>
                 );
               })}
@@ -823,25 +828,26 @@ const Dashboard = () => {
         </div>
 
         {/* Insights & Export Section */}
-        <div className="grid lg:grid-cols-2 gap-8 mt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 mt-4 sm:mt-8">
           {/* Insights */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Monthly Insights</h2>
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Insights</h2>
               <button
                 onClick={handleGenerateInsight}
                 disabled={generatingInsight || transactions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 text-xs sm:text-base"
               >
                 {generatingInsight ? (
                   <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    Generating...
+                    <Loader className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                    <span className="hidden sm:inline">Generating...</span>
+                    <span className="sm:hidden">...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    Generate
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span>Generate</span>
                   </>
                 )}
               </button>
@@ -890,34 +896,34 @@ const Dashboard = () => {
           </div>
 
           {/* Export & Reports */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Download className="w-6 h-6 text-green-600" />
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+              <Download className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               Export Reports
             </h2>
-            <div className="space-y-4">
-              <p className="text-gray-600 text-sm">
+            <div className="space-y-3 sm:space-y-4">
+              <p className="text-gray-600 text-xs sm:text-sm">
                 Generate comprehensive reports for taxes, audits, or monthly summaries.
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4">
                 <button
                   onClick={() => handleGenerateReport('pdf')}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 border-2 border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                  className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-3 bg-red-50 text-red-700 border-2 border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium text-xs sm:text-base"
                 >
-                  <Download className="w-5 h-5" />
-                  PDF Report
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span>PDF</span>
                 </button>
                 <button
                   onClick={() => handleGenerateReport('excel')}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 text-green-700 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors font-medium"
+                  className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 sm:py-3 bg-green-50 text-green-700 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors font-medium text-xs sm:text-base"
                 >
-                  <Download className="w-5 h-5" />
-                  Excel Report
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span>Excel</span>
                 </button>
               </div>
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Tip:</strong> Reports include your transactions, budget analysis, and AI insights for the last month.
+              <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
+                <p className="text-xs sm:text-sm text-blue-800">
+                  <strong>Tip:</strong> Reports include transactions, budget, and insights.
                 </p>
               </div>
             </div>
@@ -926,20 +932,20 @@ const Dashboard = () => {
 
         {/* Alerts Section */}
         {alerts.length > 0 && (
-          <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <Bell className="w-6 h-6 text-orange-600" />
+          <div className="mt-4 sm:mt-8 bg-white rounded-lg sm:rounded-xl shadow-sm p-4 sm:p-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
+              <Bell className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
               Smart Alerts ({alerts.length})
             </h2>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               {alerts.map((alert) => (
-                <div key={alert.id} className="flex items-center justify-between p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                  <p className="text-gray-800">{alert.message}</p>
+                <div key={alert.id} className="flex items-center justify-between p-3 sm:p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-gray-800 text-sm sm:text-base pr-2">{alert.message}</p>
                   <button
                     onClick={() => handleAcknowledgeAlert(alert.id)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 flex-shrink-0"
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 </div>
               ))}

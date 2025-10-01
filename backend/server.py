@@ -147,6 +147,126 @@ class SearchResponse(BaseModel):
     error: Optional[str] = None
 
 
+# ============= Financial Chat Models =============
+class FinancialChatRequest(BaseModel):
+    message: str
+    context_type: Optional[str] = "auto"  # auto, transactions, budget, goals
+
+
+class FinancialChatResponse(BaseModel):
+    success: bool
+    response: str
+    suggestions: List[str] = Field(default_factory=list)
+    context_used: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+# ============= Goal Models =============
+class GoalCreate(BaseModel):
+    title: str
+    target_amount: float
+    current_amount: float = 0
+    deadline: Optional[str] = None
+    category: Optional[str] = None
+
+
+class Goal(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    title: str
+    target_amount: float
+    current_amount: float
+    deadline: Optional[str] = None
+    category: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class GoalProgress(BaseModel):
+    goal_id: str
+    percentage: float
+    remaining_amount: float
+    days_left: Optional[int] = None
+    on_track: bool
+
+
+# ============= Insight Models =============
+class InsightRequest(BaseModel):
+    period_type: str = "monthly"  # weekly, monthly
+
+
+class InsightReport(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    period_type: str
+    start_date: str
+    end_date: str
+    summary: str
+    trends: dict
+    recommendations: List[str]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# ============= Alert Models =============
+class AlertRuleCreate(BaseModel):
+    rule_type: str  # threshold, subscription, pattern
+    threshold_amount: Optional[float] = None
+    category: Optional[str] = None
+    enabled: bool = True
+
+
+class AlertRule(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    rule_type: str
+    threshold_amount: Optional[float] = None
+    category: Optional[str] = None
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TriggeredAlert(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    rule_id: str
+    user_id: str
+    message: str
+    triggered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    acknowledged: bool = False
+
+
+# ============= Gamification Models =============
+class UserStats(BaseModel):
+    user_id: str
+    current_streak: int = 0
+    longest_streak: int = 0
+    total_transactions: int = 0
+    badges_earned: List[str] = Field(default_factory=list)
+    last_activity_date: Optional[str] = None
+
+
+class Badge(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str
+    criteria: str
+    rarity: str  # common, rare, epic, legendary
+
+
+class Achievement(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    badge_id: str
+    unlocked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# ============= Report Models =============
+class ReportRequest(BaseModel):
+    format: str  # pdf, excel
+    period_start: str
+    period_end: str
+    include_sections: List[str] = Field(default_factory=lambda: ["transactions", "budget", "insights"])
+
+
 def _ensure_db(request: Request):
     try:
         return request.app.state.db
@@ -709,6 +829,567 @@ async def get_budget_history(
         return [BudgetAnalysis(**b) for b in budgets]
     except Exception as exc:
         logger.exception("Error getting budget history")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Financial Chat Endpoints =============
+@api_router.post("/chat/financial", response_model=FinancialChatResponse)
+async def financial_chat(
+    chat_request: FinancialChatRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        context_used = []
+        context_text = ""
+
+        # Gather user context
+        transactions = await db.transactions.find({"user_id": current_user.id}).sort("date", -1).limit(50).to_list(50)
+        if transactions:
+            context_used.append("recent_transactions")
+            total_income = sum(t["amount"] for t in transactions if t["type"] == "income")
+            total_expenses = sum(t["amount"] for t in transactions if t["type"] == "expense")
+            context_text += f"\nUser's Recent Financial Data:\n"
+            context_text += f"- Total Income: ${total_income:.2f}\n"
+            context_text += f"- Total Expenses: ${total_expenses:.2f}\n"
+            context_text += f"- Net: ${total_income - total_expenses:.2f}\n"
+
+        budget = await db.budgets.find_one({"user_id": current_user.id}, sort=[("created_at", -1)])
+        if budget:
+            context_used.append("budget_analysis")
+            context_text += f"\nLatest Budget Analysis ({budget['month']}/{budget['year']}):\n"
+            context_text += f"- Top spending categories: {', '.join(list(budget['spending_by_category'].keys())[:3])}\n"
+
+        goals = await db.goals.find({"user_id": current_user.id}).to_list(10)
+        if goals:
+            context_used.append("goals")
+            context_text += f"\nActive Goals: {len(goals)}\n"
+
+        # Create financial advisor prompt
+        system_prompt = f"""You are a friendly personal finance assistant for {current_user.username}.
+Provide helpful, actionable financial advice based on their data. Be conversational, encouraging, and specific.
+{context_text}
+
+User's question: {chat_request.message}
+
+Provide a clear, helpful response and suggest 2-3 actionable next steps."""
+
+        chat_agent = await _get_or_create_agent(request, "chat")
+        result = await chat_agent.execute(system_prompt)
+
+        if not result.success:
+            return FinancialChatResponse(
+                success=False,
+                response="I'm having trouble processing your request. Please try again.",
+                error=result.error
+            )
+
+        # Extract suggestions (simple heuristic)
+        suggestions = [
+            "View your budget analysis",
+            "Set a savings goal",
+            "Review spending by category"
+        ]
+
+        return FinancialChatResponse(
+            success=True,
+            response=result.content,
+            suggestions=suggestions,
+            context_used=context_used
+        )
+
+    except Exception as exc:
+        logger.exception("Error in financial chat")
+        return FinancialChatResponse(
+            success=False,
+            response="An error occurred. Please try again.",
+            error=str(exc)
+        )
+
+
+# ============= Goal Tracking Endpoints =============
+@api_router.post("/goals", response_model=Goal)
+async def create_goal(
+    goal_data: GoalCreate,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        goal = Goal(user_id=current_user.id, **goal_data.model_dump())
+        await db.goals.insert_one(goal.model_dump())
+        return goal
+    except Exception as exc:
+        logger.exception("Error creating goal")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/goals", response_model=List[Goal])
+async def get_goals(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        goals = await db.goals.find({"user_id": current_user.id}).sort("created_at", -1).to_list(100)
+        return [Goal(**g) for g in goals]
+    except Exception as exc:
+        logger.exception("Error getting goals")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.put("/goals/{goal_id}", response_model=Goal)
+async def update_goal(
+    goal_id: str,
+    goal_data: GoalCreate,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        result = await db.goals.update_one(
+            {"id": goal_id, "user_id": current_user.id},
+            {"$set": goal_data.model_dump()}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Goal not found")
+
+        updated_goal = await db.goals.find_one({"id": goal_id})
+        return Goal(**updated_goal)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error updating goal")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.delete("/goals/{goal_id}")
+async def delete_goal(
+    goal_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        result = await db.goals.delete_one({"id": goal_id, "user_id": current_user.id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Goal not found")
+        return {"success": True, "message": "Goal deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error deleting goal")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/goals/{goal_id}/progress", response_model=GoalProgress)
+async def get_goal_progress(
+    goal_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        goal_data = await db.goals.find_one({"id": goal_id, "user_id": current_user.id})
+        if not goal_data:
+            raise HTTPException(status_code=404, detail="Goal not found")
+
+        goal = Goal(**goal_data)
+        percentage = (goal.current_amount / goal.target_amount * 100) if goal.target_amount > 0 else 0
+        remaining = goal.target_amount - goal.current_amount
+
+        days_left = None
+        on_track = True
+        if goal.deadline:
+            try:
+                deadline_date = datetime.strptime(goal.deadline, "%Y-%m-%d")
+                days_left = (deadline_date - datetime.now(timezone.utc)).days
+                if days_left > 0:
+                    required_daily = remaining / days_left if days_left > 0 else remaining
+                    on_track = required_daily < (goal.target_amount / 30)  # Simple heuristic
+            except ValueError:
+                pass
+
+        return GoalProgress(
+            goal_id=goal_id,
+            percentage=min(percentage, 100),
+            remaining_amount=max(remaining, 0),
+            days_left=days_left,
+            on_track=on_track
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error calculating goal progress")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Insights Endpoints =============
+@api_router.post("/insights/generate", response_model=InsightReport)
+async def generate_insight(
+    insight_request: InsightRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        now = datetime.now(timezone.utc)
+
+        # Calculate date range
+        if insight_request.period_type == "weekly":
+            start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+            end_date = now.strftime("%Y-%m-%d")
+        else:  # monthly
+            start_date = now.replace(day=1).strftime("%Y-%m-%d")
+            end_date = now.strftime("%Y-%m-%d")
+
+        # Get transactions in period
+        transactions = await db.transactions.find({"user_id": current_user.id}).to_list(1000)
+
+        # Filter by date range (simple filter)
+        period_transactions = [t for t in transactions if start_date <= t.get("date", "") <= end_date]
+
+        if not period_transactions:
+            raise HTTPException(status_code=400, detail="No transactions found for this period")
+
+        # Calculate trends
+        total_income = sum(t["amount"] for t in period_transactions if t["type"] == "income")
+        total_expenses = sum(t["amount"] for t in period_transactions if t["type"] == "expense")
+
+        category_spending = {}
+        for t in period_transactions:
+            if t["type"] == "expense":
+                cat = t.get("category") or "Uncategorized"
+                category_spending[cat] = category_spending.get(cat, 0) + t["amount"]
+
+        trends = {
+            "total_income": total_income,
+            "total_expenses": total_expenses,
+            "net": total_income - total_expenses,
+            "top_categories": dict(sorted(category_spending.items(), key=lambda x: x[1], reverse=True)[:5])
+        }
+
+        # Generate AI summary
+        prompt = f"""Analyze this {insight_request.period_type} financial data for {current_user.username}:
+
+Period: {start_date} to {end_date}
+- Income: ${total_income:.2f}
+- Expenses: ${total_expenses:.2f}
+- Net: ${total_income - total_expenses:.2f}
+- Top spending categories: {', '.join([f'{k}: ${v:.2f}' for k, v in list(category_spending.items())[:3]])}
+
+Provide a brief summary (2-3 sentences) and 3 specific recommendations."""
+
+        chat_agent = await _get_or_create_agent(request, "chat")
+        result = await chat_agent.execute(prompt)
+
+        if not result.success:
+            raise HTTPException(status_code=500, detail="Failed to generate insights")
+
+        # Extract recommendations
+        recommendations = [
+            "Review your highest spending category",
+            "Set up automatic savings transfers",
+            "Track subscription renewals"
+        ]
+
+        insight = InsightReport(
+            user_id=current_user.id,
+            period_type=insight_request.period_type,
+            start_date=start_date,
+            end_date=end_date,
+            summary=result.content,
+            trends=trends,
+            recommendations=recommendations
+        )
+
+        await db.insights.insert_one(insight.model_dump())
+        return insight
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error generating insight")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/insights/latest", response_model=InsightReport)
+async def get_latest_insight(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        insight = await db.insights.find_one({"user_id": current_user.id}, sort=[("created_at", -1)])
+        if not insight:
+            raise HTTPException(status_code=404, detail="No insights found")
+        return InsightReport(**insight)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error getting latest insight")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/insights/history", response_model=List[InsightReport])
+async def get_insight_history(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        insights = await db.insights.find({"user_id": current_user.id}).sort("created_at", -1).to_list(50)
+        return [InsightReport(**i) for i in insights]
+    except Exception as exc:
+        logger.exception("Error getting insight history")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Alert Endpoints =============
+@api_router.post("/alerts/rules", response_model=AlertRule)
+async def create_alert_rule(
+    rule_data: AlertRuleCreate,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        rule = AlertRule(user_id=current_user.id, **rule_data.model_dump())
+        await db.alert_rules.insert_one(rule.model_dump())
+        return rule
+    except Exception as exc:
+        logger.exception("Error creating alert rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/alerts/rules", response_model=List[AlertRule])
+async def get_alert_rules(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        rules = await db.alert_rules.find({"user_id": current_user.id}).to_list(100)
+        return [AlertRule(**r) for r in rules]
+    except Exception as exc:
+        logger.exception("Error getting alert rules")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.put("/alerts/rules/{rule_id}", response_model=AlertRule)
+async def update_alert_rule(
+    rule_id: str,
+    rule_data: AlertRuleCreate,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        result = await db.alert_rules.update_one(
+            {"id": rule_id, "user_id": current_user.id},
+            {"$set": rule_data.model_dump()}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Alert rule not found")
+
+        updated_rule = await db.alert_rules.find_one({"id": rule_id})
+        return AlertRule(**updated_rule)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error updating alert rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.delete("/alerts/rules/{rule_id}")
+async def delete_alert_rule(
+    rule_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        result = await db.alert_rules.delete_one({"id": rule_id, "user_id": current_user.id})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Alert rule not found")
+        return {"success": True, "message": "Alert rule deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error deleting alert rule")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/alerts/triggered", response_model=List[TriggeredAlert])
+async def get_triggered_alerts(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        alerts = await db.triggered_alerts.find({"user_id": current_user.id, "acknowledged": False}).sort("triggered_at", -1).to_list(50)
+        return [TriggeredAlert(**a) for a in alerts]
+    except Exception as exc:
+        logger.exception("Error getting triggered alerts")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/alerts/acknowledge/{alert_id}")
+async def acknowledge_alert(
+    alert_id: str,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        result = await db.triggered_alerts.update_one(
+            {"id": alert_id, "user_id": current_user.id},
+            {"$set": {"acknowledged": True}}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        return {"success": True, "message": "Alert acknowledged"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Error acknowledging alert")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Gamification Endpoints =============
+@api_router.get("/gamification/stats", response_model=UserStats)
+async def get_user_stats(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        stats_data = await db.user_stats.find_one({"user_id": current_user.id})
+
+        if not stats_data:
+            # Create initial stats
+            stats = UserStats(user_id=current_user.id)
+            await db.user_stats.insert_one(stats.model_dump())
+            return stats
+
+        return UserStats(**stats_data)
+    except Exception as exc:
+        logger.exception("Error getting user stats")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.post("/gamification/check-streak")
+async def check_streak(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        stats_data = await db.user_stats.find_one({"user_id": current_user.id})
+        if not stats_data:
+            stats = UserStats(user_id=current_user.id, current_streak=1, longest_streak=1, last_activity_date=today)
+            await db.user_stats.insert_one(stats.model_dump())
+            return {"success": True, "streak": 1, "message": "Streak started!"}
+
+        stats = UserStats(**stats_data)
+
+        # Check if activity is today
+        if stats.last_activity_date == today:
+            return {"success": True, "streak": stats.current_streak, "message": "Already tracked today"}
+
+        # Check if yesterday
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        if stats.last_activity_date == yesterday:
+            stats.current_streak += 1
+            stats.longest_streak = max(stats.longest_streak, stats.current_streak)
+        else:
+            stats.current_streak = 1
+
+        stats.last_activity_date = today
+
+        await db.user_stats.update_one(
+            {"user_id": current_user.id},
+            {"$set": stats.model_dump()}
+        )
+
+        return {"success": True, "streak": stats.current_streak, "message": f"Streak: {stats.current_streak} days!"}
+    except Exception as exc:
+        logger.exception("Error checking streak")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@api_router.get("/gamification/badges", response_model=List[Badge])
+async def get_badges():
+    badges = [
+        Badge(id="first_transaction", name="Getting Started", description="Add your first transaction", icon="🌱", criteria="1 transaction", rarity="common"),
+        Badge(id="week_streak", name="Week Warrior", description="Track expenses for 7 days straight", icon="🔥", criteria="7 day streak", rarity="common"),
+        Badge(id="month_streak", name="Monthly Master", description="Track expenses for 30 days straight", icon="⭐", criteria="30 day streak", rarity="rare"),
+        Badge(id="goal_achiever", name="Goal Crusher", description="Complete your first savings goal", icon="🎯", criteria="Complete 1 goal", rarity="rare"),
+        Badge(id="budget_pro", name="Budget Pro", description="Generate 5 budget analyses", icon="💰", criteria="5 budgets", rarity="epic"),
+        Badge(id="savings_legend", name="Savings Legend", description="Save $1000 or more", icon="💎", criteria="$1000 saved", rarity="legendary"),
+    ]
+    return badges
+
+
+@api_router.get("/gamification/achievements", response_model=List[Achievement])
+async def get_achievements(
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+        achievements = await db.achievements.find({"user_id": current_user.id}).to_list(100)
+        return [Achievement(**a) for a in achievements]
+    except Exception as exc:
+        logger.exception("Error getting achievements")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ============= Export & Reports Endpoints =============
+@api_router.post("/reports/generate")
+async def generate_report(
+    report_request: ReportRequest,
+    current_user: User = Depends(get_current_user),
+    request: Request = None
+):
+    try:
+        db = _ensure_db(request)
+
+        # Get data for report
+        transactions = await db.transactions.find({"user_id": current_user.id}).to_list(1000)
+        budget = await db.budgets.find_one({"user_id": current_user.id}, sort=[("created_at", -1)])
+        insights = await db.insights.find({"user_id": current_user.id}).sort("created_at", -1).limit(5).to_list(5)
+
+        # Filter transactions by date range
+        filtered_transactions = [
+            t for t in transactions
+            if report_request.period_start <= t.get("date", "") <= report_request.period_end
+        ]
+
+        report_data = {
+            "user": current_user.username,
+            "period": f"{report_request.period_start} to {report_request.period_end}",
+            "transactions": filtered_transactions,
+            "budget": budget,
+            "insights": insights,
+            "format": report_request.format
+        }
+
+        # For now, return data structure (PDF/Excel generation can be added later)
+        return {
+            "success": True,
+            "message": f"Report data prepared in {report_request.format} format",
+            "data": {
+                "transaction_count": len(filtered_transactions),
+                "total_income": sum(t["amount"] for t in filtered_transactions if t["type"] == "income"),
+                "total_expenses": sum(t["amount"] for t in filtered_transactions if t["type"] == "expense"),
+            }
+        }
+    except Exception as exc:
+        logger.exception("Error generating report")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

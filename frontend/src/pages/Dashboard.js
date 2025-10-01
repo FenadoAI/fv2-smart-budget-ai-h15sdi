@@ -13,8 +13,15 @@ import {
   LogOut,
   AlertCircle,
   Loader,
-  PieChart
+  PieChart,
+  Target,
+  Award,
+  Flame,
+  Bell,
+  Download,
+  X
 } from 'lucide-react';
+import ChatWidget from '../components/ChatWidget';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8001';
 const API = `${API_BASE}/api`;
@@ -36,6 +43,23 @@ const Dashboard = () => {
     type: 'expense'
   });
 
+  // New states for enhanced features
+  const [goals, setGoals] = useState([]);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [newGoal, setNewGoal] = useState({
+    title: '',
+    target_amount: '',
+    current_amount: '',
+    deadline: '',
+    category: ''
+  });
+  const [userStats, setUserStats] = useState(null);
+  const [badges, setBadges] = useState([]);
+  const [achievements, setAchievements] = useState([]);
+  const [latestInsight, setLatestInsight] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [generatingInsight, setGeneratingInsight] = useState(false);
+
   const token = localStorage.getItem('token');
 
   useEffect(() => {
@@ -48,6 +72,13 @@ const Dashboard = () => {
     setUser(userData);
     fetchTransactions();
     fetchLatestBudget();
+    fetchGoals();
+    fetchUserStats();
+    fetchBadges();
+    fetchAchievements();
+    fetchLatestInsight();
+    fetchAlerts();
+    checkStreak();
   }, []);
 
   const fetchTransactions = async () => {
@@ -158,6 +189,173 @@ const Dashboard = () => {
     navigate('/');
   };
 
+  // ============= New Feature Functions =============
+
+  // Goals
+  const fetchGoals = async () => {
+    try {
+      const response = await axios.get(`${API}/goals`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setGoals(response.data);
+    } catch (err) {
+      console.error('Error fetching goals:', err);
+    }
+  };
+
+  const handleAddGoal = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(
+        `${API}/goals`,
+        {
+          ...newGoal,
+          target_amount: parseFloat(newGoal.target_amount),
+          current_amount: parseFloat(newGoal.current_amount || 0)
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setShowAddGoal(false);
+      setNewGoal({ title: '', target_amount: '', current_amount: '', deadline: '', category: '' });
+      fetchGoals();
+    } catch (err) {
+      setError('Failed to add goal');
+    }
+  };
+
+  const handleDeleteGoal = async (id) => {
+    try {
+      await axios.delete(`${API}/goals/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchGoals();
+    } catch (err) {
+      setError('Failed to delete goal');
+    }
+  };
+
+  // Gamification
+  const fetchUserStats = async () => {
+    try {
+      const response = await axios.get(`${API}/gamification/stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUserStats(response.data);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
+
+  const fetchBadges = async () => {
+    try {
+      const response = await axios.get(`${API}/gamification/badges`);
+      setBadges(response.data);
+    } catch (err) {
+      console.error('Error fetching badges:', err);
+    }
+  };
+
+  const fetchAchievements = async () => {
+    try {
+      const response = await axios.get(`${API}/gamification/achievements`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAchievements(response.data);
+    } catch (err) {
+      console.error('Error fetching achievements:', err);
+    }
+  };
+
+  const checkStreak = async () => {
+    try {
+      await axios.post(
+        `${API}/gamification/check-streak`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      fetchUserStats();
+    } catch (err) {
+      console.error('Error checking streak:', err);
+    }
+  };
+
+  // Insights
+  const fetchLatestInsight = async () => {
+    try {
+      const response = await axios.get(`${API}/insights/latest`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setLatestInsight(response.data);
+    } catch (err) {
+      // No insights yet is okay
+      if (err.response?.status !== 404) {
+        console.error('Error fetching insight:', err);
+      }
+    }
+  };
+
+  const handleGenerateInsight = async () => {
+    setGeneratingInsight(true);
+    try {
+      const response = await axios.post(
+        `${API}/insights/generate`,
+        { period_type: 'monthly' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setLatestInsight(response.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to generate insight');
+    } finally {
+      setGeneratingInsight(false);
+    }
+  };
+
+  // Alerts
+  const fetchAlerts = async () => {
+    try {
+      const response = await axios.get(`${API}/alerts/triggered`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAlerts(response.data);
+    } catch (err) {
+      console.error('Error fetching alerts:', err);
+    }
+  };
+
+  const handleAcknowledgeAlert = async (id) => {
+    try {
+      await axios.post(
+        `${API}/alerts/acknowledge/${id}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      fetchAlerts();
+    } catch (err) {
+      console.error('Error acknowledging alert:', err);
+    }
+  };
+
+  // Reports
+  const handleGenerateReport = async (format) => {
+    try {
+      const now = new Date();
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const response = await axios.post(
+        `${API}/reports/generate`,
+        {
+          format: format,
+          period_start: lastMonth.toISOString().split('T')[0],
+          period_end: now.toISOString().split('T')[0],
+          include_sections: ['transactions', 'budget', 'insights']
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert(`Report generated: ${response.data.message}`);
+    } catch (err) {
+      setError('Failed to generate report');
+    }
+  };
+
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
@@ -187,13 +385,31 @@ const Dashboard = () => {
             </h1>
             <p className="text-gray-600">Your Financial Dashboard</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-            Logout
-          </button>
+          <div className="flex items-center gap-4">
+            {/* Streak Counter */}
+            {userStats && userStats.current_streak > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                <Flame className="w-5 h-5 text-orange-600" />
+                <span className="font-bold text-orange-700">{userStats.current_streak} day streak!</span>
+              </div>
+            )}
+            {/* Alerts Badge */}
+            {alerts.length > 0 && (
+              <div className="relative">
+                <Bell className="w-6 h-6 text-gray-600" />
+                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {alerts.length}
+                </span>
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -460,7 +676,280 @@ const Dashboard = () => {
             )}
           </div>
         </div>
+
+        {/* Goals & Gamification Section */}
+        <div className="grid lg:grid-cols-2 gap-8 mt-8">
+          {/* Goals */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Target className="w-6 h-6 text-blue-600" />
+                Goals
+              </h2>
+              <button
+                onClick={() => setShowAddGoal(!showAddGoal)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <PlusCircle className="w-5 h-5" />
+                Add Goal
+              </button>
+            </div>
+
+            {showAddGoal && (
+              <form onSubmit={handleAddGoal} className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Goal Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={newGoal.title}
+                    onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none"
+                    placeholder="Emergency Fund"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Target Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={newGoal.target_amount}
+                      onChange={(e) => setNewGoal({ ...newGoal, target_amount: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none"
+                      placeholder="5000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Current Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newGoal.current_amount}
+                      onChange={(e) => setNewGoal({ ...newGoal, current_amount: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Deadline (Optional)</label>
+                  <input
+                    type="date"
+                    value={newGoal.deadline}
+                    onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Add Goal
+                </button>
+              </form>
+            )}
+
+            <div className="space-y-4">
+              {goals.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">
+                  No goals yet. Set your first financial goal!
+                </p>
+              ) : (
+                goals.map((goal) => {
+                  const percentage = (goal.current_amount / goal.target_amount * 100).toFixed(1);
+                  return (
+                    <div key={goal.id} className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-bold text-gray-900">{goal.title}</h3>
+                        <button
+                          onClick={() => handleDeleteGoal(goal.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="mb-2">
+                        <div className="flex justify-between text-sm text-gray-600 mb-1">
+                          <span>${goal.current_amount.toFixed(2)} / ${goal.target_amount.toFixed(2)}</span>
+                          <span>{percentage}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-blue-600 to-green-600 h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                      {goal.deadline && (
+                        <p className="text-xs text-gray-500">
+                          Deadline: {new Date(goal.deadline).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Gamification - Badges */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Award className="w-6 h-6 text-yellow-600" />
+              Achievements
+            </h2>
+            <div className="grid grid-cols-3 gap-4">
+              {badges.map((badge) => {
+                const isUnlocked = achievements.some(a => a.badge_id === badge.id);
+                return (
+                  <div
+                    key={badge.id}
+                    className={`p-4 rounded-lg text-center transition-all ${
+                      isUnlocked
+                        ? 'bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-300'
+                        : 'bg-gray-100 opacity-50'
+                    }`}
+                  >
+                    <div className="text-4xl mb-2">{badge.icon}</div>
+                    <p className="font-bold text-xs text-gray-900">{badge.name}</p>
+                    <p className="text-xs text-gray-600 mt-1">{badge.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Insights & Export Section */}
+        <div className="grid lg:grid-cols-2 gap-8 mt-8">
+          {/* Insights */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Monthly Insights</h2>
+              <button
+                onClick={handleGenerateInsight}
+                disabled={generatingInsight || transactions.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {generatingInsight ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Generate
+                  </>
+                )}
+              </button>
+            </div>
+
+            {!latestInsight ? (
+              <div className="text-center py-8">
+                <p className="text-gray-600">
+                  {transactions.length === 0
+                    ? 'Add transactions to generate insights'
+                    : 'Click "Generate" to get AI-powered insights'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
+                  <p className="text-sm text-gray-700 mb-3">{latestInsight.summary}</p>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="text-center">
+                      <p className="text-gray-600">Income</p>
+                      <p className="font-bold text-green-600">${latestInsight.trends.total_income?.toFixed(2)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-600">Expenses</p>
+                      <p className="font-bold text-red-600">${latestInsight.trends.total_expenses?.toFixed(2)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-gray-600">Net</p>
+                      <p className="font-bold text-blue-600">${latestInsight.trends.net?.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 mb-2">Recommendations</h3>
+                  <ul className="space-y-1">
+                    {latestInsight.recommendations.map((rec, idx) => (
+                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                        <span className="text-purple-600">•</span>
+                        {rec}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Export & Reports */}
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Download className="w-6 h-6 text-green-600" />
+              Export Reports
+            </h2>
+            <div className="space-y-4">
+              <p className="text-gray-600 text-sm">
+                Generate comprehensive reports for taxes, audits, or monthly summaries.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handleGenerateReport('pdf')}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-red-50 text-red-700 border-2 border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium"
+                >
+                  <Download className="w-5 h-5" />
+                  PDF Report
+                </button>
+                <button
+                  onClick={() => handleGenerateReport('excel')}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 text-green-700 border-2 border-green-200 rounded-lg hover:bg-green-100 transition-colors font-medium"
+                >
+                  <Download className="w-5 h-5" />
+                  Excel Report
+                </button>
+              </div>
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Tip:</strong> Reports include your transactions, budget analysis, and AI insights for the last month.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Alerts Section */}
+        {alerts.length > 0 && (
+          <div className="mt-8 bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Bell className="w-6 h-6 text-orange-600" />
+              Smart Alerts ({alerts.length})
+            </h2>
+            <div className="space-y-3">
+              {alerts.map((alert) => (
+                <div key={alert.id} className="flex items-center justify-between p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-gray-800">{alert.message}</p>
+                  <button
+                    onClick={() => handleAcknowledgeAlert(alert.id)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Chat Widget */}
+      <ChatWidget />
     </div>
   );
 };
